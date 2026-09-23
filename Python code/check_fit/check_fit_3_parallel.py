@@ -54,11 +54,11 @@ RESULTS_DIR = OUTPUT_DIR / "results"
 
 SEED = None  # fixes the ONE scenario (POVM/train states/test state/observable) shared by all three contexts
 
-DIM = 10
+DIM = 2
 POVM_TYPE = "random"  # "mub" (complete MUB POVM) or "random" (Haar-random rank-one POVM)
-N_OUT_RANDOM = 1000  # number of POVM outcomes when POVM_TYPE == "random" (ignored for "mub")
+N_OUT_RANDOM = 512  # number of POVM outcomes when POVM_TYPE == "random" (ignored for "mub")
 N_OUT = DIM * (DIM + 1) if POVM_TYPE == "mub" else N_OUT_RANDOM
-N_TRAIN = 5000  # must be > N_OUT + 1 for the fit's cross term to be defined
+N_TRAIN = 4096  # must be > N_OUT + 1 for the fit's cross term to be defined
 
 M_FINITE = 10000  # finite test-shot budget used in contexts 2 and 3
 GAMMA_NONZERO = 0.05  # gamma_train = gamma_test used in context 3

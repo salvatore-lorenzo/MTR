@@ -45,8 +45,8 @@ OUTPUT_DIR = Path(__file__).resolve().parent
 
 DIM = 4
 POVM_TYPE = "random"  # "mub" (complete MUB POVM) or "random" (Haar-random rank-one POVM)
-N_OUT = 128
-N_TRAIN = 1024
+N_OUT = 512
+N_TRAIN = 8192
 M_FINITE = 10000
 GAMMA_NONZERO = 0.05
 shot_noise = "mult"  # "gauss" (Gaussian) or "mult" (multinomial) -- must match the original run
