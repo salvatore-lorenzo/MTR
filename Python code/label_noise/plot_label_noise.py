@@ -23,7 +23,7 @@ from matplotlib.ticker import FixedLocator, LogLocator
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from common import load_mse_data  # noqa: E402
 from markers import circle, diamond, square, triangle, marker_inner_style, marker_outer_style, styled  # noqa: E402
-plt.rcParams["text.latex.preamble"] = r"\usepackage{amsfonts, amssymb}"
+plt.rcParams["text.latex.preamble"] = r"\usepackage{amsfonts, amssymb, mathpazo,bm}"
 
 plt.rcParams.update(
     {
@@ -154,7 +154,7 @@ def main():
 
     ax.legend(
         [dashed_handle, dashdot_handle],
-        [r"Var$(w_{o})/M$", r"$\gamma^2 N R/ M$"],
+        [r"Var$(\boldsymbol{w}_{\mathcal{O}})/M$", r"$\gamma^2 N C/ M$"],
         loc=[0.09,0.36],
         frameon=True,
         framealpha=0.9,

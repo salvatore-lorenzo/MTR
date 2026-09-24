@@ -67,8 +67,8 @@ Y_LIMITS = (3e-6, 0.08)
 
 def load_curves():
     curves = {}
-    for path in DATA_DIR.glob("MSE_vs_M_MUB_d=*_.txt"):
-        match = re.search(r"N=(\d+)", path.name)
+    for path in DATA_DIR.glob("MSE_vs_N_MUB_d=*_ntrain=100_*_.txt"):
+        match = re.search(r"_M=(\d+)", path.name)
         m_value = int(match.group(1))
         stat_list, res_mse = load_mse_data(path)
         curves[m_value] = (stat_list, res_mse)
@@ -79,7 +79,7 @@ def main():
     curves = load_curves()
     missing = [m for m in M_ORDER if m not in curves]
     if missing:
-        raise FileNotFoundError(f"no MSE_vs_M_MUB_d=..._.txt file found for M={missing}")
+        raise FileNotFoundError(f"no MSE_vs_N_MUB_d=..._.txt file found for M={missing}")
 
     fig, ax = plt.subplots(figsize=(6.4, 4.0))
 
@@ -92,7 +92,7 @@ def main():
         m = styled(shape)
 
         ax.fill_between(stat_list, p10, p90, color=color, alpha=0.25, linewidth=0, zorder=2)
-        (line,) = ax.plot(stat_list, p50, color=color, linewidth=1.6, zorder=3)
+        (line,) = ax.plot(stat_list, p50, color=color,linestyle='-', linewidth=1.6, zorder=3)
         (inner,) = ax.plot(
             stat_list, p50, marker=m, linestyle="None", zorder=4,
             **marker_inner_style(color, size=MARKERSIZE[n], edgewidth=EDGEWIDTH),
@@ -103,7 +103,7 @@ def main():
         )
         d=2
         Varwo=((d-1)*(d+2)/(d*(d+1)))
-        dashed_artist = ax.hlines(Varwo/m_value, 4*1e1, 5*1e6, color='k', linestyle='--', linewidth=2, zorder=3)
+        dashed_artist = ax.hlines(Varwo/m_value, 2*1e2, 5*1e6, color='k', linestyle='--', linewidth=2, zorder=3)
         
         if n == 0:
             dashed_handle = dashed_artist
@@ -123,9 +123,9 @@ def main():
     ax.yaxis.set_major_formatter(lambda val, pos: y_labels[y_ticks.index(val)])
     ax.yaxis.set_minor_locator(LogLocator(base=10.0, subs=range(2, 10)))
 
-    x_ticks = [10, 100, 1000, 10000]
-    x_labels = [rf"$10^{{{i}}}$" for i in range(1, 5)]
-    ax.set_xlim(1.5, 1.6e4)
+    x_ticks = [10, 100, 1000, 10000,100000]
+    x_labels = [rf"$10^{{{i}}}$" for i in range(1, 6)]
+    ax.set_xlim(1.5, 5.e5)
     ax.xaxis.set_major_locator(FixedLocator(x_ticks))
     ax.xaxis.set_major_formatter(lambda val, pos: x_labels[x_ticks.index(val)])
     ax.xaxis.set_minor_locator(LogLocator(base=10.0, subs=range(2, 10)))
@@ -137,7 +137,7 @@ def main():
         legend_handles,
         legend_labels,
         handler_map={tuple: HandlerTuple(ndivide=1)},
-        loc=[0.05, 0.1],
+        loc=[0.03, 0.07],
         frameon=True,
         framealpha=0.9,
         edgecolor="0.8",

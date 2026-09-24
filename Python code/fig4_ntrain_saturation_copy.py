@@ -9,8 +9,11 @@ own grid, following the original notebook, since larger d needs a larger
 minimum n_tr to be well posed) while the training shot budget N is held
 fixed at `STAT_RHO`.
 
-Output: one ``MSE_vs_ntrain_MUB_d=..._.txt`` file per dimension, written
-to ``./ntrain_saturation/`` next to this script.
+Output: one ``MSE_vs_ntrain_MUB_d=..._copy.txt`` file per dimension,
+written to ``./ntrain_saturation/`` next to this script, each containing
+the swept n_tr values and the [p10, p50, p90, mean] quantiles of the
+per-realization MSEs, pooled over ``N_REPS`` repetitions x ``N_REAL``
+realizations.
 
 Note: the largest n_tr values (up to 2**14 = 16384) combined with 50
 repetitions make this the most expensive of the four scripts; reduce
@@ -66,8 +69,8 @@ def mse_single_repetition(M_mu, dim_in, n_train, n_test, n_obs, N, n_real):
         P_rho_N = dirt_multinomial(P_rho.T, N).T
         W_N = y_rho @ np.linalg.pinv(P_rho_N)
         diff = W_N @ P_sigma - y_sigma
-        sq_errors.append(np.abs(diff) ** 2)
-    return np.mean(np.concatenate([e.flatten() for e in sq_errors]))
+        sq_errors.append(np.mean(np.abs(diff) ** 2))
+    return np.array(sq_errors)
 
 
 def main():
@@ -75,7 +78,7 @@ def main():
         M_mu = np.array([p.flatten() for p in mub(dim_in)])
         dim_out = dim_in * (dim_in + 1)
 
-        res = np.empty((len(train_list), N_REPS))
+        res = np.empty((len(train_list), N_REPS, N_REAL))
         for i, n_train in enumerate(train_list):
             for rep in range(N_REPS):
                 res[i, rep] = mse_single_repetition(
@@ -83,13 +86,13 @@ def main():
                 )
             print(f"d={dim_in}  ntrain={n_train}  done")
 
-        res_mse = np.array([quantiles(res[i]) for i in range(len(train_list))])
+        res_mse = np.array([quantiles(np.concatenate(res[i])) for i in range(len(train_list))])
 
         # As in the original notebook, the filename records the largest
         # n_tr in this dimension's grid (the loop variable's final value).
         filename = (
             f"MSE_vs_ntrain_MUB_d={dim_in}_nout={dim_out}_N={STAT_RHO}"
-            f"_ntrain={train_list[-1]}_ntest={N_TEST}_nobs={N_OBS}_.txt"
+            f"_ntrain={train_list[-1]}_ntest={N_TEST}_nobs={N_OBS}_copy.txt"
         )
         save_mse_data(OUTPUT_DIR / filename, train_list, res_mse)
         print(f"wrote {OUTPUT_DIR / filename}")

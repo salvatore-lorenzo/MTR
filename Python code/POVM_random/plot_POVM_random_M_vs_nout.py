@@ -22,6 +22,7 @@ from matplotlib.ticker import FixedLocator, LogLocator
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from common import load_mse_data  # noqa: E402
 from markers import circle, diamond, marker_inner_style, marker_outer_style, pentagon, square, styled, triangle  # noqa: E402
+plt.rcParams["text.latex.preamble"] = r"\usepackage{amsfonts, amssymb,mathpazo,bm}"
 
 plt.rcParams.update(
     {
@@ -39,7 +40,7 @@ plt.rcParams.update(
 DATA_DIR = Path(__file__).resolve().parent
 OUTPUT_PATH = DATA_DIR / "POVM_random_M_vs_nout_plot.pdf"
 
-STAT_SIGMA = 1000
+STAT_SIGMA = 1000 #"inf" #1000
 
 # Which fig8_POVM_random_M.py run to plot (must match that script's
 # N_TRAIN / N_TEST / N_OBS at the time it produced the data files) --
@@ -52,7 +53,7 @@ FILENAME_RE = re.compile(
 )
 
 # Fixed training shot budgets N to show, one curve each, in legend order.
-N_VALUES = (10, 100, 1000, 10000, 100000)
+N_VALUES = (100, 1000, 10000, 100000)
 
 STYLE = {
     10: ("#8FB032", square, r"$N = 10$"),  # green
@@ -62,10 +63,13 @@ STYLE = {
     100000: ("#2FA672", pentagon, r"$N = 10^5$"),  # teal
 }
 
-MARKERSIZE = [11, 11, 13, 11, 11]
+MARKERSIZE = [ 11, 13, 11, 11]
 EDGEWIDTH = 1.3
 
-Y_LIMITS = (1e-4, 0.1)
+if STAT_SIGMA==1000:
+    Y_LIMITS = (5e-4, 1e2)
+else:
+    Y_LIMITS = (5e-8, 1e2)
 
 
 def load_curves():
@@ -148,12 +152,12 @@ def main():
     ax.set_yscale("log")
     ax.set_xlabel(r"$n_{\mathrm{out}}$")
     ax.set_ylabel(r"MSE")
-    #ax.set_ylim(*Y_LIMITS)
+    ax.set_ylim(*Y_LIMITS)
 
     ax.yaxis.set_major_locator(LogLocator(base=10.0, numticks=10))
     ax.yaxis.set_minor_locator(LogLocator(base=10.0, subs=range(2, 10)))
 
-    x_ticks = [4, 8, 16, 32, 64, 128]
+    x_ticks = [4, 8, 16, 32, 64, 128, 256]
     #ax.set_xlim(3, 170)
     ax.xaxis.set_major_locator(FixedLocator(x_ticks))
     ax.xaxis.set_major_formatter(lambda val, pos: str(int(val)))
@@ -166,10 +170,11 @@ def main():
         legend_handles,
         legend_labels,
         handler_map={tuple: HandlerTuple(ndivide=1)},
-        loc="best",
+        loc=[0.15,0.65],
         frameon=True,
         framealpha=0.9,
         edgecolor="0.8",
+        ncols=2
     )
 
     fig.tight_layout()

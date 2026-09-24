@@ -28,6 +28,7 @@ from matplotlib.ticker import FixedLocator, LogLocator
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from common import load_mse_data  # noqa: E402
 from markers import circle, diamond, hexagon, marker_inner_style, marker_outer_style, pentagon, square, styled, triangle  # noqa: E402
+plt.rcParams["text.latex.preamble"] = r"\usepackage{amsfonts, amssymb,mathpazo,bm}"
 
 plt.rcParams.update(
     {
@@ -45,7 +46,7 @@ plt.rcParams.update(
 DATA_DIR = Path(__file__).resolve().parent
 OUTPUT_PATH = DATA_DIR / "POVM_random_M_plot.pdf"
 
-STAT_SIGMA = 1000
+STAT_SIGMA = 1000  #"inf" 
 
 RUN_PARAMS = {"ntrain": 256, "ntest": 200, "nobs": 100}
 
@@ -63,13 +64,17 @@ STYLE = {
     128: ("#A64CB8", hexagon,  r"$n_{\mathrm{out}} = 128$"),  # purple, hexagon
 }
 
-MARKERSIZE = [11, 11, 13, 11, 11, 11]
+MARKERSIZE = [ 11, 13, 11, 11, 11]
 EDGEWIDTH = 1.3
 
 
-DIM_OUT_ORDER = (4, 8, 16, 32, 64, 128)
+DIM_OUT_ORDER = ( 8, 16, 32, 64, 128)
 
-Y_LIMITS = (1e-4, 0.1)
+if STAT_SIGMA==1000:
+    Y_LIMITS = (5e-4, 0.1)
+else:
+    Y_LIMITS = (1e-8, 0.1)
+
 
 
 def load_curves():
@@ -153,7 +158,7 @@ def main():
 
     x_ticks = [10, 100, 1000, 1e4, 1e5]
     x_labels = [rf"$10^{{{i}}}$" for i in range(1, 6)]
-    ax.set_xlim(2, 2e5)
+    ax.set_xlim(2, 1.4e5)
     ax.xaxis.set_major_locator(FixedLocator(x_ticks))
     ax.xaxis.set_major_formatter(lambda val, pos: x_labels[x_ticks.index(val)])
     ax.xaxis.set_minor_locator(LogLocator(base=10.0, subs=range(2, 10)))
@@ -165,7 +170,7 @@ def main():
         legend_handles,
         legend_labels,
         handler_map={tuple: HandlerTuple(ndivide=1)},
-        loc=[0.1,0.1],
+        loc=[0.6,0.4],
         frameon=True,
         framealpha=0.9,
         edgecolor="0.8",

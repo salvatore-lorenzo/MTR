@@ -1,19 +1,11 @@
-"""Reproduce the Figure 5 plot (MSE vs N, for M = 10^2, 10^3, 10^4, 10^5)
-from the ``MSE_vs_M_MUB_d=..._.txt`` files produced by
-``fig5_M_saturation.py`` in this same folder.
+"""Reproduce the Figure 3 plot (MSE vs N, for n_tr = 10^2, 10^3, 10^4) from
+the ``MSE_vs_N_MUB_d=..._ntrain=..._copy.txt`` files produced by
+``fig3_N_scaling_copy.py`` in this same folder.
 
-Same visual style as ``ntrain_saturation/plot_ntrain_saturation.py`` and
-``M_inf/plot_N_scaling.py``: for each (fixed) test shot budget M, the
-median MSE (p50) is plotted against the training shot budget N on a
-log-log scale, with a shaded band spanning the [p10, p90] quantiles, and
-the same ring-and-dot markers from ``markers.py``.
-
-Note: in the original notebook/paper this figure's x-axis is labeled M,
-but the quantity actually swept along the x-axis in the exported data is
-the training shot budget N, with M held fixed per curve/file (its value
-is recorded, mislabeled "N=", in each filename) — so it is labeled $N$
-here to match what is actually plotted.
-
+Same visual style as ``ntrain_saturation/plot_ntrain_saturation.py``: for
+each n_tr, the median MSE (p50) is plotted against the training shot
+budget N on a log-log scale, with a shaded band spanning the [p10, p90]
+quantiles, and the same ring-and-dot markers from ``markers.py``.
 Run this script from anywhere; it locates its data files next to itself.
 """
 
@@ -24,15 +16,16 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.legend_handler import HandlerTuple
 from matplotlib.ticker import FixedLocator, LogLocator
+from sympy import gamma
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from common import load_mse_data  # noqa: E402
-from markers import circle, diamond, marker_inner_style, marker_outer_style, square, styled, triangle  # noqa: E402
+from markers import diamond, square, triangle, circle, marker_inner_style, marker_outer_style, styled  # noqa: E402
 plt.rcParams["text.latex.preamble"] = r"\usepackage{amsfonts, amssymb, mathpazo,bm}"
-
 plt.rcParams.update(
     {
         "text.usetex": True,
+        #"text.latex.preamble": r"\usepackage{amsmath}",
         "font.family": "serif",
         "font.size": 17,
         "axes.labelsize": 20,
@@ -44,51 +37,51 @@ plt.rcParams.update(
 )
 
 DATA_DIR = Path(__file__).resolve().parent
-OUTPUT_PATH = DATA_DIR / "M_saturation_plot.pdf"
+OUTPUT_PATH = DATA_DIR / "N_scaling_plot_copy.pdf"
 
-# M -> (color, shape, legend label), matching the reference figure.
+# n_tr -> (color, shape, legend label), matching the reference figure.
 # `square` (from markers.py) renders as a diamond and `diamond` renders
 # as a square — see the note in markers.py.
 STYLE = {
-    100: ("#8FB032", circle, r"$M = 10^2$"),  # green, circle
-    1000: ("#5E81B5", triangle, r"$M = 10^3$"),  # blue, triangle
-    10000: ("#E19C24", diamond, r"$M = 10^4$"),  # orange, square
-    100000: ("#EB6235", square, r"$M = 10^5$"),  # red, diamond
+    100:   ("#8FB032", square, r"$n_{\mathrm{tr}} = 10^2$"),  # green, diamond
+    1000:  ("#5E81B5", diamond, r"$n_{\mathrm{tr}} = 10^3$"),  # blue, square
+    10000: ("#E19C24", triangle, r"$n_{\mathrm{tr}} = 10^4$"),  # orange, triangle
+    100000: ("#EB6235", circle, r"$n_{\mathrm{tr}} = 10^5$"),  # orange, triangle
 }
 
-MARKERSIZE = [9.5, 13, 11, 11]
+MARKERSIZE = [11, 11, 13]
 EDGEWIDTH = 1.3
 
 # Legend / z-order, top to bottom as in the reference figure.
-M_ORDER = (100, 1000, 10000, 100000)
+NTRAIN_ORDER = (100, 1000, 10000)
 
-Y_LIMITS = (3e-6, 0.08)
+Y_LIMITS = (1e-10, 0.1)
 
 
 def load_curves():
     curves = {}
-    for path in DATA_DIR.glob("MSE_vs_M_MUB_d=*_.txt"):
-        match = re.search(r"N=(\d+)", path.name)
-        m_value = int(match.group(1))
+    for path in DATA_DIR.glob("MSE_vs_N_MUB_d=*_copy.txt"):
+        match = re.search(r"ntrain=(\d+)", path.name)
+        n_train = int(match.group(1))
         stat_list, res_mse = load_mse_data(path)
-        curves[m_value] = (stat_list, res_mse)
+        curves[n_train] = (stat_list, res_mse)
     return curves
 
 
 def main():
     curves = load_curves()
-    missing = [m for m in M_ORDER if m not in curves]
+    missing = [n for n in NTRAIN_ORDER if n not in curves]
     if missing:
-        raise FileNotFoundError(f"no MSE_vs_M_MUB_d=..._.txt file found for M={missing}")
+        raise FileNotFoundError(f"no MSE_vs_N_MUB_d=..._ntrain=..._copy.txt file found for ntrain={missing}")
 
     fig, ax = plt.subplots(figsize=(6.4, 4.0))
 
     legend_handles, legend_labels = [], []
 
-    for n, m_value in enumerate(M_ORDER):
-        stat_list, res_mse = curves[m_value]
+    for n,n_train in enumerate(NTRAIN_ORDER):
+        stat_list, res_mse = curves[n_train]
         p10, p50, p90 = res_mse[:, 0], res_mse[:, 1], res_mse[:, 2]
-        color, shape, label = STYLE[m_value]
+        color, shape, label = STYLE[n_train]
         m = styled(shape)
 
         ax.fill_between(stat_list, p10, p90, color=color, alpha=0.25, linewidth=0, zorder=2)
@@ -102,30 +95,35 @@ def main():
             **marker_outer_style(color, size=MARKERSIZE[n] * 15 / 35),
         )
         d=2
-        Varwo=((d-1)*(d+2)/(d*(d+1)))
-        dashed_artist = ax.hlines(Varwo/m_value, 4*1e1, 5*1e6, color='k', linestyle='--', linewidth=2, zorder=3)
-        
+        Eb2=((d-1)*(d+2)**2/(d+1))
+        EV=(d*(d-1)*(d+2)/(d+1))
+
+        interval=np.linspace(2*1e3, 5*1e6, 100)
+        (dashed_artist,) = ax.plot(interval,EV/(interval*n_train), color='k', linestyle='--', linewidth=2, zorder=3)
+        interval=np.linspace(2*1e0, 5*1e3, 100)
+        (dashdot_line,) = ax.plot(interval, Eb2/interval**2, 
+                                  color='r', linestyle='-.',linewidth=2, zorder=3)
+
         if n == 0:
-            dashed_handle = dashed_artist
+            dashed_handle, dashdot_handle = dashed_artist, dashdot_line
 
         legend_handles.append((line, inner, outer))
         legend_labels.append(label)
-
     ax.set_xscale("log")
     ax.set_yscale("log")
     ax.set_xlabel(r"$N$")
     ax.set_ylabel(r"MSE")
     ax.set_ylim(*Y_LIMITS)
 
-    y_ticks = [1e-2, 1e-3, 1e-4, 1e-5]
-    y_labels = [r"$0.010$", r"$0.001$", r"$10^{-4}$", r"$10^{-5}$"]
+    y_ticks = [1e-1, 1e-4, 1e-7, 1e-10]
+    y_labels = [r"$0.1$", r"$10^{-4}$", r"$10^{-7}$", r"$10^{-10}$"]
     ax.yaxis.set_major_locator(FixedLocator(y_ticks))
     ax.yaxis.set_major_formatter(lambda val, pos: y_labels[y_ticks.index(val)])
     ax.yaxis.set_minor_locator(LogLocator(base=10.0, subs=range(2, 10)))
 
-    x_ticks = [10, 100, 1000, 10000]
-    x_labels = [rf"$10^{{{i}}}$" for i in range(1, 5)]
-    ax.set_xlim(1.5, 1.6e4)
+    x_ticks = [10, 100, 1000, 1e4, 1e5, 1e6]
+    x_labels = [rf"$10^{{{i}}}$" for i in range(1, 7)]
+    ax.set_xlim(2, 2e6)
     ax.xaxis.set_major_locator(FixedLocator(x_ticks))
     ax.xaxis.set_major_formatter(lambda val, pos: x_labels[x_ticks.index(val)])
     ax.xaxis.set_minor_locator(LogLocator(base=10.0, subs=range(2, 10)))
@@ -133,25 +131,28 @@ def main():
     ax.grid(True, which="major", axis="both", linestyle=":", color="0.6", linewidth=0.8, zorder=0)
     ax.tick_params(which="both", direction="in", top=True, right=True)
 
-    M_legend = ax.legend(
+    ntrain_legend = ax.legend(
         legend_handles,
         legend_labels,
         handler_map={tuple: HandlerTuple(ndivide=1)},
-        loc=[0.05, 0.1],
+        loc="upper right",
         frameon=True,
         framealpha=0.9,
         edgecolor="0.8",
     )
-    ax.add_artist(M_legend)
+
+    ax.add_artist(ntrain_legend)
 
     ax.legend(
-        [dashed_handle],
-        [r"Var$(\boldsymbol{w}_{\mathcal{O}})/M$"],
-        loc=[0.62,0.83],
+        [dashdot_handle,dashed_handle],
+        #[r"$b^2/N^2$",r"$V/(Nn_{tr})$"],
+        [r"$\mathbb{E}_{\sigma,\mathcal{O}}[b^2]/N^2$",r"$\mathbb{E}_{\sigma,\mathcal{O}}[V]/(Nn_{tr})$"],
+        loc=[0.06,0.13],
         frameon=True,
         framealpha=0.9,
         edgecolor="0.8",
     )
+
     fig.tight_layout()
     fig.savefig(OUTPUT_PATH)
     print(f"wrote {OUTPUT_PATH}")
