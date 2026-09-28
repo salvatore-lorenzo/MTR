@@ -24,7 +24,7 @@ Sections:
   4. Regression-level comparison: bias^2 / variance / MSE of the
      pseudoinverse-regression estimator, trained on noisy POVM statistics,
      for both noise models.
-  5. Main comparison plots (MSE vs N, MSE ratio, relative difference, and
+  5. Main comparison plots (MSE vs N and
      N^2*bias^2 & N*n_tr*variance). Each plot is built from `N_REPS`
      independent *instances* of the whole regression scenario (fresh
      Haar states/POVM/observables every time, exactly as the sibling
@@ -65,7 +65,7 @@ from common import (  # noqa: E402
     sigma_batch,
     sigma_from_p,
 )
-from markers import circle, diamond, marker_inner_style, marker_outer_style, square, styled, triangle  # noqa: E402
+from markers import diamond, marker_inner_style, marker_outer_style, styled, triangle  # noqa: E402
 
 # Same look as the sibling `plot_*.py` scripts (see e.g.
 # `POVM_random/plot_POVM_random.py`): LaTeX/serif rendering, ring-and-dot
@@ -477,8 +477,7 @@ def theoretical_bias2_variance(d):
 
 def plot_1_mse_vs_N(N_values, results, dim, n_reps, n_train):
     """MSE vs N spans several orders of magnitude, so a real ~10-15%
-    instance-to-instance relative spread (see Plots 2/3, whose much
-    narrower y-range shows it clearly) would be squashed into an
+    instance-to-instance relative spread would be squashed into an
     invisible sliver by a [p10,p90] band drawn directly on that log
     axis -- not a bug, just what a ~10% effect looks like against a
     10,000x range. To make it visible in *this* plot too, add a ratio
@@ -522,29 +521,6 @@ def plot_1_mse_vs_N(N_values, results, dim, n_reps, n_train):
 
     fig.tight_layout()
     savefig(fig, "1_MSE_vs_N")
-
-
-def plot_2_mse_ratio(N_values, results, dim, n_reps):
-    ratio = results["gauss"]["mse"] / results["mult"]["mse"]  # per instance, shape (n_reps, len(N))
-    color, shape = "#8FB032", square  # green, diamond-look (nout=4 style)
-    fig, ax = plt.subplots(figsize=(6.4, 4.2))
-    _styled_band_and_line(ax, N_values, ratio, color, shape)
-    ax.axhline(1.0, color="k", linestyle="--", linewidth=1.2, zorder=1)
-    _style_axes(ax, r"$N$", r"$R_{\rm MSE} = {\rm MSE_{gauss}}/{\rm MSE_{mult}}$", log_y=False)
-    ax.set_title(rf"MSE ratio ($d={dim}$, {n_reps} instances)")
-    fig.tight_layout()
-    savefig(fig, "2_MSE_ratio")
-
-
-def plot_3_relative_difference(N_values, results, dim, n_reps):
-    delta = np.abs(results["gauss"]["mse"] - results["mult"]["mse"]) / results["mult"]["mse"]
-    color, shape = "#EB6235", circle  # red, circle (nout=32 style)
-    fig, ax = plt.subplots(figsize=(6.4, 4.2))
-    _styled_band_and_line(ax, N_values, delta, color, shape)
-    _style_axes(ax, r"$N$", r"$\delta_{\rm MSE}$", log_y=True)
-    ax.set_title(rf"Relative MSE difference ($d={dim}$, {n_reps} instances)")
-    fig.tight_layout()
-    savefig(fig, "3_MSE_relative_difference")
 
 
 def plot_4_bias_variance_scaling(N_values, results, n_train, dim, n_reps):
@@ -619,8 +595,6 @@ def main():
 
     print("\n=== Section 5: main comparison plots (median + [p10,p90] instance band) ===")
     plot_1_mse_vs_N(N_VALUES, results, DIM, N_REPS, N_TRAIN)
-    plot_2_mse_ratio(N_VALUES, results, DIM, N_REPS)
-    plot_3_relative_difference(N_VALUES, results, DIM, N_REPS)
     plot_4_bias_variance_scaling(N_VALUES, results, N_TRAIN, DIM, N_REPS)
 
     print("\nDone. All figures written to:", OUTPUT_DIR)

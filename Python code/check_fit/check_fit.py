@@ -122,7 +122,7 @@ def mse_fit_terms(N, d, n_tr, n_out, gamma, gamma_test, M):
         "bias": Ad / (N + d * (d + 2)) ** 2,
         "train_shot_variance": Cd / (N * n_tr) * (1 + (d**2 - 1) * (N / (N + d * (d + 2))) ** 2),
         "train_label_noise": np.full_like(N, d**2 * gamma**2 / n_tr),
-        "test_noise": np.full_like(N, 0*gamma_test**2 + test_shot_noise),  # test label noise + test shot noise
+        "test_noise": np.full_like(N, gamma_test**2 + test_shot_noise),  # test label noise + test shot noise
     }
     terms["cross"] = np.zeros_like(N) if M is None else (N * gamma**2 / M) * (n_out - d**2) / (n_tr - n_out - 1)
     return terms
