@@ -1,6 +1,6 @@
 """Reproduce the Figure 3 plot (MSE vs N, for n_tr = 10^2, 10^3, 10^4) from
-the ``MSE_vs_N_MUB_d=..._ntrain=..._.txt`` files produced by
-``fig3_N_scaling.py`` in this same folder.
+the ``MSE_vs_N_MUB_d=..._ntrain=..._copy.txt`` files produced by
+``fig3_N_scaling_copy.py`` in this same folder.
 
 Same visual style as ``ntrain_saturation/plot_ntrain_saturation.py``: for
 each n_tr, the median MSE (p50) is plotted against the training shot
@@ -21,7 +21,7 @@ from sympy import gamma
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from common import load_mse_data  # noqa: E402
 from markers import diamond, square, triangle, circle, marker_inner_style, marker_outer_style, styled  # noqa: E402
-plt.rcParams["text.latex.preamble"] = r"\usepackage{amsfonts, amssymb}"
+plt.rcParams["text.latex.preamble"] = r"\usepackage{amsfonts, amssymb, mathpazo,bm}"
 plt.rcParams.update(
     {
         "text.usetex": True,
@@ -37,7 +37,7 @@ plt.rcParams.update(
 )
 
 DATA_DIR = Path(__file__).resolve().parent
-OUTPUT_PATH = DATA_DIR / "N_scaling_plot.pdf"
+OUTPUT_PATH = DATA_DIR / "N_scaling_plot_copy.pdf"
 
 # n_tr -> (color, shape, legend label), matching the reference figure.
 # `square` (from markers.py) renders as a diamond and `diamond` renders
@@ -60,7 +60,7 @@ Y_LIMITS = (1e-10, 0.1)
 
 def load_curves():
     curves = {}
-    for path in DATA_DIR.glob("MSE_vs_N_MUB_d=*_.txt"):
+    for path in DATA_DIR.glob("MSE_vs_N_MUB_d=*_copy.txt"):
         match = re.search(r"ntrain=(\d+)", path.name)
         n_train = int(match.group(1))
         stat_list, res_mse = load_mse_data(path)
@@ -72,7 +72,7 @@ def main():
     curves = load_curves()
     missing = [n for n in NTRAIN_ORDER if n not in curves]
     if missing:
-        raise FileNotFoundError(f"no MSE_vs_N_MUB_d=..._ntrain=..._.txt file found for ntrain={missing}")
+        raise FileNotFoundError(f"no MSE_vs_N_MUB_d=..._ntrain=..._copy.txt file found for ntrain={missing}")
 
     fig, ax = plt.subplots(figsize=(6.4, 4.0))
 

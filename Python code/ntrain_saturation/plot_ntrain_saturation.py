@@ -1,6 +1,6 @@
 """Reproduce the Figure 4 plot (MSE vs n_tr, for d = 2, 3, 5, 7) from the
-``MSE_vs_ntrain_MUB_d=*_.txt`` files produced by
-``fig4_ntrain_saturation.py`` in this same folder.
+``MSE_vs_ntrain_MUB_d=*_copy.txt`` files produced by
+``fig4_ntrain_saturation_copy.py`` in this same folder.
 
 For each dimension, the median MSE (p50) is plotted against n_tr on a
 log-log scale, with a shaded band spanning the [p10, p90] quantiles.
@@ -18,7 +18,7 @@ from matplotlib.ticker import FixedLocator, LogLocator
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from common import load_mse_data  # noqa: E402
 from markers import circle, diamond, marker_inner_style, marker_outer_style, square, styled, triangle  # noqa: E402
-plt.rcParams["text.latex.preamble"] = r"\usepackage{amsfonts, amssymb}"
+plt.rcParams["text.latex.preamble"] = r"\usepackage{amsfonts, amssymb,mathpazo,bm}"
 
 plt.rcParams.update(
     {
@@ -34,7 +34,7 @@ plt.rcParams.update(
 )
 
 DATA_DIR = Path(__file__).resolve().parent
-OUTPUT_PATH = DATA_DIR / "ntrain_saturation_plot.pdf"
+OUTPUT_PATH = DATA_DIR / "ntrain_saturation_plot_copy.pdf"
 
 # Dimension -> (color, shape), matching the reference figure. Shapes come
 # from markers.py: `square` renders as a diamond and `diamond` renders as
@@ -53,12 +53,12 @@ EDGEWIDTH = 1.3
 # Legend / z-order, top to bottom as in the reference figure.
 DIM_ORDER = (7, 5, 3, 2)
 N = 100
-Y_LIMITS = (4e-4, 0.025)
+Y_LIMITS = (3e-4, 0.025)
 
 
 def load_curves():
     curves = {}
-    for path in DATA_DIR.glob("MSE_vs_ntrain_MUB_d=*_.txt"):
+    for path in DATA_DIR.glob("MSE_vs_ntrain_MUB_d=*_copy.txt"):
         match = re.search(r"d=(\d+)", path.name)
         dim = int(match.group(1))
         n_tr, res_mse = load_mse_data(path)
@@ -70,7 +70,7 @@ def main():
     curves = load_curves()
     missing = [d for d in DIM_ORDER if d not in curves]
     if missing:
-        raise FileNotFoundError(f"no MSE_vs_ntrain_MUB_d=..._.txt file found for d={missing}")
+        raise FileNotFoundError(f"no MSE_vs_ntrain_MUB_d=..._copy.txt file found for d={missing}")
 
     fig, ax = plt.subplots(figsize=(6.4, 4.0))
 
@@ -137,7 +137,7 @@ def main():
         legend_handles,
         legend_labels,
         handler_map={tuple: HandlerTuple(ndivide=1)},
-        loc=[0.7,0.55],
+        loc=[0.7,0.54],
         frameon=True,
         framealpha=0.9,
         edgecolor="0.8",
@@ -148,7 +148,7 @@ def main():
     ax.legend(
         [dashed_handle],
         [r"$\mathbb{E}_{\sigma,\mathcal{O}}[b^2]/(N{+}d(d{+}2))^2$"],
-        loc=[0.13,0.815],
+        loc=[0.13,0.83],
         frameon=True,
         framealpha=0.9,
         edgecolor="0.8",

@@ -1,5 +1,5 @@
 """Multinomial shot noise vs. its Gaussian approximation, for POVM-based
-quantum linear regression / QELM.
+quantum linear regression / QELM -- run and save.
 
 The central scientific question:
 
@@ -19,37 +19,46 @@ Sections:
 
   1. Basic noise models: sanity check that both models reproduce
      E[p_hat] = p and Cov[p_hat] = Sigma(p)/N.
-  3. Quantum setting: Haar-random pure states measured by the complete MUB
-     POVM (``common.mub``), used to build the regression scenario.
+  3. Quantum setting: Haar-random pure states measured by a POVM chosen
+     with `POVM_TYPE`, used to build the regression scenario:
+       "mub"    -- the complete MUB POVM (``common.mub``), n_out = d(d+1)
+                   fixed by `d`;
+       "random" -- a Haar-random rank-one POVM (``common.random_povm``) with
+                   `N_OUT_RANDOM` outcomes, drawn afresh for every instance.
   4. Regression-level comparison: bias^2 / variance / MSE of the
      pseudoinverse-regression estimator, trained on noisy POVM statistics,
-     for both noise models.
-  5. Main comparison plots (MSE vs N and
-     N^2*bias^2 & N*n_tr*variance). Each plot is built from `N_REPS`
-     independent *instances* of the whole regression scenario (fresh
-     Haar states/POVM/observables every time, exactly as the sibling
-     ``fig7/8_POVM_random*.py`` scripts do), so it shows a median curve
-     together with a shaded [p10, p90] band across instances -- the
-     instance-to-instance *fluctuation* of bias/variance/MSE, not just
-     their value for one particular random draw.
+     for both noise models. For every n_tr in `N_TRAIN_VALUES`, `N_REPS`
+     independent *instances* of the whole regression scenario are drawn
+     (fresh Haar states/POVM/observables every time), so the saved arrays
+     expose the instance-to-instance fluctuation, not just one random draw.
   6. Optional finite test statistics (disabled by default): the test-side
      probabilities are also estimated from M shots instead of exact.
 
+Each n_tr uses its own seeded RNG stream (reset to `SEED` before its
+sweep), so its results do not depend on the other values in
+`N_TRAIN_VALUES` or on their order. The per-instance bias^2 / variance /
+MSE arrays of both models, and the MSE of every single noise realization
+(one simulated experiment), are saved, one pickle per n_tr, under
+``results/`` (see `results_filename`). Run ``plot_noise_comparison.py``
+with the same parameters to make the figure.
+
+This module is also imported as a library by the ``check_fit*/`` scripts
+(noise models, regression helpers, `_style_axes`).
+
 Only NumPy and Matplotlib are used. The heavy lifting (singular Gaussian
 sampling, the multinomial/Gaussian noise models, and the pseudoinverse
-regression weights) lives in ``common.py`` as reusable functions; this
-script is the orchestration, plotting and reporting layer on top of them.
+regression weights) lives in ``common.py`` as reusable functions.
 
 Run with ``python3 noise_comparison.py`` from anywhere; it locates its
 output directory next to itself.
 """
 
+import pickle
 import sys
 from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.legend_handler import HandlerTuple
 from matplotlib.ticker import FixedLocator, LogLocator, NullFormatter
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -61,15 +70,15 @@ from common import (  # noqa: E402
     multinomial_phat,
     multinomial_phat_batch,
     random_kets,
+    random_povm,
     sample_gaussian_from_covariance,
     sigma_batch,
     sigma_from_p,
 )
-from markers import diamond, marker_inner_style, marker_outer_style, styled, triangle  # noqa: E402
+from markers import diamond, triangle  # noqa: E402
 
-# Same look as the sibling `plot_*.py` scripts (see e.g.
-# `POVM_random/plot_POVM_random.py`): LaTeX/serif rendering, ring-and-dot
-# markers from `markers.py`, and matching color palette.
+# Matplotlib settings used by the plotting helper below, which the
+# `check_fit*/` scripts import from this module (`nc.plt`, `nc._style_axes`).
 plt.rcParams.update(
     {
         "text.usetex": True,
@@ -84,31 +93,34 @@ plt.rcParams.update(
 )
 
 OUTPUT_DIR = Path(__file__).resolve().parent
+RESULTS_DIR = OUTPUT_DIR / "results"
 
-# model -> (color, shape, legend label), reusing the exact hex colors and
-# shape assignments used for nout=8 / nout=16 in `plot_POVM_random.py`.
+# model -> (color, shape, legend label); `check_fit*/` scripts reuse the
+# multinomial color.
 MODEL_STYLE = {
     "mult": ("#5E81B5", diamond, "multinomial"),  # blue, square-look
     "gauss": ("#E19C24", triangle, "Gaussian approx."),  # orange, triangle
 }
-MARKERSIZE = 11
-EDGEWIDTH = 1.3
-
 # ----------------------------------------------------------------------
-# 8. Default parameters (all easy to change).
+# Default parameters (all easy to change).
 # ----------------------------------------------------------------------
 
-SEED = 20260910
+SEED = 0
 
 DIM = 2
-N_TRAIN = 500
-N_VALUES = [5, 10, 20, 50, 100, 200, 500, 1000, 2000,10000]
+POVM_TYPE = "random"  # "mub" (complete MUB POVM) or "random" (Haar-random rank-one POVM)
+N_OUT_RANDOM = 16  # number of POVM outcomes when POVM_TYPE == "random" (ignored for "mub")
+N_OUT = DIM * (DIM + 1) if POVM_TYPE == "mub" else N_OUT_RANDOM
+#N_TRAIN_VALUES = [1,2,3,4,5,6,7,8,9]  # one results file per value
+N_TRAIN_VALUES = [1,2,3,4,5,10,15,20,32]  # one results file per value
+#N_VALUES = [5, 10, 20, 50, 100, 200, 500, 1000, 2000,10000, 20000, 50000, 100000]
+N_VALUES = [1,2,3,4,5,6,7,8,9,10,20,50,100,200,500,1000,2000,5000,10000]
 N_NOISE_REALIZATIONS = 50  # inner shot-noise realizations per instance
-N_REPS = 100  # outer instances (fresh states/POVM/observables each time)
+N_REPS = 1  # outer instances (fresh states/POVM/observables each time)
 N_TEST_STATES = 50
 N_OBSERVABLES = 20
-PINV_RCOND = 1e-16  # pseudoinverse tolerance -- same for both noise models
-EIG_TOL = 1e-8  # Sigma eigenvalue tolerance (Gaussian sampling / rank)
+PINV_RCOND = 1e-30  # pseudoinverse tolerance -- same for both noise models (NumPy default; 1e-16 inverts rounding noise)
+EIG_TOL = 1e-30  # Sigma eigenvalue tolerance (Gaussian sampling / rank)
 
 # Section 6 (optional finite test statistics): disabled by default.
 M_TEST = None
@@ -124,25 +136,8 @@ def set_seed(seed=SEED):
     common.rng = np.random.default_rng(seed)
 
 
-def savefig(fig, stem):
-    """Save a figure as both PDF and PNG next to this script."""
-    fig.savefig(OUTPUT_DIR / f"{stem}.pdf")
-    fig.savefig(OUTPUT_DIR / f"{stem}.png", dpi=150)
-    plt.close(fig)
-    print(f"  wrote {stem}.pdf / {stem}.png")
-
-
-def quantile_bands(arr):
-    """`arr` has shape (n_reps, len(N_values)): one row per independent
-    instance. Returns the (p10, p50, p90) quantiles across instances
-    (axis 0), each of shape (len(N_values),) -- the median curve and its
-    instance-to-instance fluctuation band.
-    """
-    return np.percentile(arr, [10, 50, 90], axis=0)
-
-
 # ========================================================================
-# 3. QUANTUM SETTING: Haar states + complete MUB POVM.
+# 3. QUANTUM SETTING: Haar states + complete MUB POVM or random POVM.
 # ========================================================================
 #
 # mu_{b,k} = |b,k><b,k| / (d+1), for the d+1 mutually unbiased bases of a
@@ -156,6 +151,18 @@ def quantile_bands(arr):
 def mub_povm_matrix(dim):
     """(n_out, dim**2) row-major-flattened MUB POVM elements; n_out = dim*(dim+1)."""
     return np.array([m.flatten() for m in mub(dim)])
+
+
+def build_povm(dim, povm_type, n_out):
+    """The measurement POVM, as an (n_out, dim**2) row-major-flattened
+    matrix: the complete MUB POVM (`n_out` ignored) or a Haar-random
+    rank-one POVM with `n_out` outcomes (same as `check_fit.build_povm`).
+    """
+    if povm_type == "mub":
+        return mub_povm_matrix(dim)
+    elif povm_type == "random":
+        return random_povm(dim, n_out)
+    raise ValueError(f"POVM_TYPE must be 'mub' or 'random', got {povm_type!r}")
 
 
 def flattened_states(dim, n):
@@ -173,15 +180,15 @@ def povm_probabilities(M_povm, M_states):
     return chop(M_povm.conj() @ M_states.T).real
 
 
-def verify_quantum_setup(dim, n_check=2000):
+def verify_quantum_setup(dim, povm_type=POVM_TYPE, n_out=N_OUT, n_check=2000):
     """Sanity check: sum_a p_a(rho) = 1 for many Haar-random states."""
-    M_mu = mub_povm_matrix(dim)
-    n_out = dim * (dim + 1)
+    M_mu = build_povm(dim, povm_type, n_out)
+    n_out = M_mu.shape[0]
     M_states = flattened_states(dim, n_check)
     P = povm_probabilities(M_mu, M_states)
     max_dev = np.max(np.abs(P.sum(axis=0) - 1))
     print(
-        f"[Section 3] d={dim}: n_out={n_out} (MUB POVM), "
+        f"[Section 3] d={dim}: n_out={n_out} ({povm_type} POVM), "
         f"max|sum_a p_a - 1| over {n_check} Haar states = {max_dev:.2e}"
     )
     return M_mu, P
@@ -228,9 +235,11 @@ def section1_moment_checks(p, N=100, n_realizations=20_000):
 # ========================================================================
 
 
-def build_regression_scenario(dim, n_train, n_test, n_obs):
+def build_regression_scenario(dim, n_train, n_test, n_obs, povm_type=POVM_TYPE, n_out=N_OUT):
     """Haar-random training states, test states, and rank-one target
-    observables, measured by the complete MUB POVM in dimension `dim`.
+    observables, measured by the POVM `build_povm(dim, povm_type, n_out)`
+    in dimension `dim` (for "random", a fresh POVM on every call, i.e. on
+    every instance).
 
     Returns the exact training/test probability matrices (rows = POVM
     outcomes, columns = states) and the exact target values
@@ -240,7 +249,7 @@ def build_regression_scenario(dim, n_train, n_test, n_obs):
     observables and test states are handled at once and the reported MSE
     is averaged over all of them.
     """
-    M_mu = mub_povm_matrix(dim)
+    M_mu = build_povm(dim, povm_type, n_out)
     M_rho = flattened_states(dim, n_train)
     M_sigma = flattened_states(dim, n_test)
     M_obs = flattened_states(dim, n_obs)  # rank-one observables |phi><phi|
@@ -308,13 +317,19 @@ def bias_variance_mse(o_hat_stack, o_true):
     return bias2, variance, mse
 
 
-def regression_sweep(dim, N_values, n_train, n_test, n_obs, R, rcond=PINV_RCOND, tol=EIG_TOL, M_test=M_TEST, verbose=False):
+def regression_sweep(
+    dim, N_values, n_train, n_test, n_obs, R, rcond=PINV_RCOND, tol=EIG_TOL, M_test=M_TEST,
+    povm_type=POVM_TYPE, n_out=N_OUT, verbose=False,
+):
     """Bias^2/variance/MSE of both noise models, swept over `N_values`,
     for a single (dim, n_train, n_test, n_obs) regression scenario (one
     *instance*: a fresh draw of training states, test states and
-    observables). Returns {model: {metric: array of shape (len(N_values),)}}.
+    observables). Returns {model: {metric: array of shape (len(N_values),)}},
+    plus {model: {"mse_real": array of shape (len(N_values), R)}}: the MSE of
+    each single noise realization (one "experiment"), averaged over the
+    (observable, test-state) pairs only.
     """
-    scenario = build_regression_scenario(dim, n_train, n_test, n_obs)
+    scenario = build_regression_scenario(dim, n_train, n_test, n_obs, povm_type=povm_type, n_out=n_out)
     P_train, P_test = scenario["P_train"], scenario["P_test"]
     y_train, y_test = scenario["y_train"], scenario["y_test"]
 
@@ -322,12 +337,12 @@ def regression_sweep(dim, N_values, n_train, n_test, n_obs, R, rcond=PINV_RCOND,
         Sigma_train = sigma_batch(P_train)
         rank, lam_min = covariance_rank_info(Sigma_train, tol=tol)
         print(
-            f"[Section 4] d={dim}: n_out={scenario['n_out']}, n_train={n_train}, "
+            f"[Section 4] d={dim}: {povm_type} POVM, n_out={scenario['n_out']}, n_train={n_train}, "
             f"Sigma_i rank in [{rank.min()},{rank.max()}] (expected {scenario['n_out'] - 1}), "
             f"smallest nonzero eigenvalue over i: {lam_min.min():.3e}"
         )
 
-    results = {model: {"bias2": [], "variance": [], "mse": []} for model in ("mult", "gauss")}
+    results = {model: {"bias2": [], "variance": [], "mse": [], "mse_real": []} for model in ("mult", "gauss")}
 
     for N in N_values:
         mult_stack, gauss_stack = noisy_training_batches(P_train, N, R, tol=tol)
@@ -344,6 +359,7 @@ def regression_sweep(dim, N_values, n_train, n_test, n_obs, R, rcond=PINV_RCOND,
             results[model]["bias2"].append(bias2)
             results[model]["variance"].append(variance)
             results[model]["mse"].append(mse)
+            results[model]["mse_real"].append(np.mean((o_hat_stack - y_test[None, :, :]) ** 2, axis=(1, 2)))
 
         if verbose:
             check = {
@@ -362,17 +378,24 @@ def regression_sweep(dim, N_values, n_train, n_test, n_obs, R, rcond=PINV_RCOND,
     return results
 
 
-def repeated_regression_sweep(dim, N_values, n_train, n_test, n_obs, R, n_reps, rcond=PINV_RCOND, tol=EIG_TOL, M_test=M_TEST):
+def repeated_regression_sweep(
+    dim, N_values, n_train, n_test, n_obs, R, n_reps, rcond=PINV_RCOND, tol=EIG_TOL, M_test=M_TEST,
+    povm_type=POVM_TYPE, n_out=N_OUT,
+):
     """Run `regression_sweep` `n_reps` independent times -- fresh Haar
     training/test states, POVM and observables every time -- to expose
     the *instance-to-instance* fluctuation of bias^2/variance/MSE, not
     just their value for one particular random scenario.
 
-    Returns {model: {metric: array of shape (n_reps, len(N_values))}}.
+    Returns {model: {metric: array of shape (n_reps, len(N_values))}}, and
+    (n_reps, len(N_values), R) for the per-realization "mse_real".
     """
-    all_results = {model: {metric: [] for metric in ("bias2", "variance", "mse")} for model in ("mult", "gauss")}
+    all_results = {model: {metric: [] for metric in ("bias2", "variance", "mse", "mse_real")} for model in ("mult", "gauss")}
     for rep in range(n_reps):
-        res = regression_sweep(dim, N_values, n_train, n_test, n_obs, R, rcond=rcond, tol=tol, M_test=M_test, verbose=(rep == 0))
+        res = regression_sweep(
+            dim, N_values, n_train, n_test, n_obs, R, rcond=rcond, tol=tol, M_test=M_test,
+            povm_type=povm_type, n_out=n_out, verbose=(rep == 0),
+        )
         for model in all_results:
             for metric in all_results[model]:
                 all_results[model][metric].append(res[model][metric])
@@ -381,15 +404,13 @@ def repeated_regression_sweep(dim, N_values, n_train, n_test, n_obs, R, n_reps, 
 
     for model in all_results:
         for metric in all_results[model]:
-            all_results[model][metric] = np.array(all_results[model][metric])  # (n_reps, len(N_values))
+            all_results[model][metric] = np.array(all_results[model][metric])  # (n_reps, len(N_values)[, R])
     return all_results
 
 
 # ========================================================================
-# 5. MAIN COMPARISON PLOTS -- median curve + [p10, p90] instance band,
-#    styled like the sibling `plot_*.py` scripts (ring-and-dot markers
-#    from markers.py, LogLocator/grid/tick conventions, HandlerTuple
-#    legends).
+# 5. PLOTTING HELPER (imported by the check_fit*/ scripts) and the
+#    asymptotic theory coefficients.
 # ========================================================================
 
 
@@ -420,43 +441,10 @@ def _style_axes(ax, xlabel, ylabel, log_y=True, x_ticks=(10, 100, 1000)):
     ax.tick_params(which="both", direction="in", top=True, right=True)
 
 
-def _styled_band_and_line(ax, x, arr, color, shape, markersize=MARKERSIZE, edgewidth=EDGEWIDTH):
-    """Shaded [p10, p90] instance band + ring-and-dot median line for one
-    model's metric, `arr` of shape (n_reps, len(x)). Returns the
-    (line, inner, outer) handle tuple for a combined `HandlerTuple` legend
-    entry, exactly as in `plot_POVM_random.py`.
-    """
-    p10, p50, p90 = quantile_bands(arr)
-    m = styled(shape)
-    ax.fill_between(x, p10, p90, color=color, alpha=0.25, linewidth=0, zorder=2)
-    (line,) = ax.plot(x, p50, color=color, linewidth=1.6, zorder=3)
-    (inner,) = ax.plot(
-        x, p50, marker=m, linestyle="None", zorder=4,
-        **marker_inner_style(color, size=markersize, edgewidth=edgewidth),
-    )
-    (outer,) = ax.plot(
-        x, p50, marker=m, linestyle="None", zorder=5,
-        **marker_outer_style(color, size=markersize * 15 / 35),
-    )
-    return line, inner, outer
-
-
-def _model_legend(ax, handles_by_model, loc="best", extra=()):
-    """Combined legend for the two noise-model curves (each a
-    (line, inner, outer) handle tuple), plus any `extra` (handle, label)
-    pairs appended after them (e.g. a theoretical reference curve).
-    """
-    handles = [handles_by_model[m] for m in ("mult", "gauss")] + [h for h, _ in extra]
-    labels = [MODEL_STYLE[m][2] for m in ("mult", "gauss")] + [lbl for _, lbl in extra]
-    ax.legend(
-        handles, labels, handler_map={tuple: HandlerTuple(ndivide=1)},
-        loc=loc, frameon=True, framealpha=0.9, edgecolor="0.8",
-    )
-
-
 def theoretical_bias2_variance(d):
     """Population-averaged bias^2 and variance of the pseudoinverse
-    regression estimator for the complete MUB POVM, exact in the joint
+    regression estimator for the complete MUB POVM only (not valid for
+    POVM_TYPE="random"), exact in the joint
     large-N, large-n_tr limit (eq. 48 of the draft, "Mind the Rank:
     Asymptotic Regime of QLR"):
 
@@ -475,97 +463,26 @@ def theoretical_bias2_variance(d):
     return b2, variance
 
 
-def plot_1_mse_vs_N(N_values, results, dim, n_reps, n_train):
-    """MSE vs N spans several orders of magnitude, so a real ~10-15%
-    instance-to-instance relative spread would be squashed into an
-    invisible sliver by a [p10,p90] band drawn directly on that log
-    axis -- not a bug, just what a ~10% effect looks like against a
-    10,000x range. To make it visible in *this* plot too, add a ratio
-    sub-panel: each instance's MSE divided by the per-N median removes
-    the shared power-law trend, leaving only the (now correctly
-    order-1) relative fluctuation on its own linear axis.
-
-    Also overlays the asymptotic theory MSE(N) = A_d/N^2 + B_d/(N n_tr)
-    (`theoretical_bias2_variance`), the draft's eq. 48/fig. 3 prediction.
+def results_filename(dim, n_train, M_test, povm_type="mub", n_out=None):
+    """MUB results keep the original name; random-POVM results also carry
+    the POVM type and its number of outcomes, so the two never overwrite
+    each other.
     """
-    fig, (ax, ax_ratio) = plt.subplots(
-        2, 1, figsize=(6.4, 6.8), sharex=True, gridspec_kw={"height_ratios": [3, 1.3], "hspace": 0.08}
-    )
-
-    handles_by_model = {}
-    for model in ("mult", "gauss"):
-        color, shape, _ = MODEL_STYLE[model]
-        handles_by_model[model] = _styled_band_and_line(ax, N_values, results[model]["mse"], color, shape)
-
-        arr = results[model]["mse"]
-        normalized = arr / np.median(arr, axis=0, keepdims=True)  # instance MSE / per-N median
-        p10, p50, p90 = quantile_bands(normalized)
-        ax_ratio.fill_between(N_values, p10, p90, color=color, alpha=0.25, linewidth=0, zorder=2)
-        ax_ratio.plot(N_values, p50, color=color, linewidth=1.6, zorder=3)
-
-    b2, variance = theoretical_bias2_variance(dim)
-    N_theory = np.logspace(np.log10(3), np.log10(3000), 200)
-    mse_theory = b2 / N_theory**2 + variance / (N_theory * n_train)
-    (theory_line,) = ax.plot(N_theory, mse_theory, color="k", linestyle="-.", linewidth=1.4, zorder=1)
-
-    _style_axes(ax, "", "MSE", log_y=True)
-    ax.set_title(rf"MSE vs $N$ ($d={dim}$, {n_reps} instances)")
-    plt.setp(ax.get_xticklabels(), visible=False)
-    _model_legend(
-        ax, handles_by_model, loc="upper right",
-        extra=[(theory_line, r"$A_d/N^2 + B_d/(N n_{\rm tr})$")],
-    )
-
-    _style_axes(ax_ratio, r"$N$", "MSE / per-$N$ median", log_y=False)
-    ax_ratio.axhline(1.0, color="k", linestyle="--", linewidth=1.2, zorder=1)
-
-    fig.tight_layout()
-    savefig(fig, "1_MSE_vs_N")
+    M_str = "inf" if M_test is None else str(M_test)
+    povm_str = "mub" if povm_type == "mub" else f"_POVM={povm_type}_nout={n_out}"
+    return f"noise_comparison_d={dim}{povm_str}_ntrain={n_train}_M={M_str}.pkl"
 
 
-def plot_4_bias_variance_scaling(N_values, results, n_train, dim, n_reps):
-    """Rescaled bias^2/variance vs N, each panel also overlaying its
-    theoretical population plateau `theoretical_bias2_variance(dim)` --
-    the horizontal reference the draft calls E_{sigma,O}(b^2)/E_{sigma,O}(V)
-    (its fig. 2) and A_d/B_d (its fig. 3): the value N^2*bias^2 and
-    N*n_tr*variance approach once N is large enough at this n_tr.
-    """
-    N_arr = np.asarray(N_values, dtype=float)
-    b2_theory, var_theory = theoretical_bias2_variance(dim)
-    fig, axes = plt.subplots(1, 2, figsize=(12.8, 4.6))
-
-    ax = axes[0]
-    handles_by_model = {
-        model: _styled_band_and_line(
-            ax, N_values, N_arr[None, :] ** 2 * results[model]["bias2"], *MODEL_STYLE[model][:2]
-        )
-        for model in ("mult", "gauss")
-    }
-    theory_line = ax.axhline(b2_theory, color="k", linestyle="-.", linewidth=1.4, zorder=1)
-    _style_axes(ax, r"$N$", r"$N^2 \, {\rm bias}^2$", log_y=True)
-    ax.set_title(r"$N^2\,{\rm bias}^2$")
-    _model_legend(ax, handles_by_model, extra=[(theory_line, r"$A_d = {\rm E}_{\sigma,O}[b^2]$")])
-
-    ax = axes[1]
-    handles_by_model = {
-        model: _styled_band_and_line(
-            ax, N_values, N_arr[None, :] * n_train * results[model]["variance"], *MODEL_STYLE[model][:2]
-        )
-        for model in ("mult", "gauss")
-    }
-    theory_line = ax.axhline(var_theory, color="k", linestyle="-.", linewidth=1.4, zorder=1)
-    _style_axes(ax, r"$N$", r"$N \, n_{\rm tr} \, {\rm variance}$", log_y=True)
-    ax.set_title(r"$N\,n_{\rm tr}\,{\rm variance}$")
-    _model_legend(ax, handles_by_model, extra=[(theory_line, r"$B_d = {\rm E}_{\sigma,O}[V]$")])
-
-    fig.suptitle(rf"Rescaled ${{\rm bias}}^2$ / variance ($d={dim}$, $n_{{\rm tr}}={n_train}$, {n_reps} instances)")
-    fig.tight_layout()
-    savefig(fig, "4_bias_variance_scaling")
+def save_results(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "wb") as f:
+        pickle.dump(data, f)
+    print(f"  wrote {path}")
 
 
-# ========================================================================
-# Main
-# ========================================================================
+def load_results(path):
+    with open(path, "rb") as f:
+        return pickle.load(f)
 
 
 def main():
@@ -576,28 +493,37 @@ def main():
     print("=" * 72)
 
     # Section 3: build a realistic example probability vector p from a
-    # single Haar-random qubit state measured by the complete MUB POVM.
-    M_mu, _ = verify_quantum_setup(DIM)
+    # single Haar-random state measured by the chosen POVM.
+    M_mu, _ = verify_quantum_setup(DIM, POVM_TYPE, N_OUT)
     p = povm_probabilities(M_mu, flattened_states(DIM, 1))[:, 0]
     print(f"[Section 3] example p (d={DIM}, n_out={len(p)}): {np.array2string(p, precision=4)}")
 
     # Section 1.
     section1_moment_checks(p, N=100, n_realizations=20_000)
 
-    # Section 4/5: N_REPS independent instances of the regression scenario.
-    print(
-        f"\n=== Section 4: regression-level comparison (d={DIM}, n_tr={N_TRAIN}, "
-        f"{N_REPS} instances x {N_NOISE_REALIZATIONS} inner noise realizations) ==="
-    )
-    results = repeated_regression_sweep(
-        DIM, N_VALUES, N_TRAIN, N_TEST_STATES, N_OBSERVABLES, N_NOISE_REALIZATIONS, N_REPS, M_test=M_TEST
-    )
+    # Section 4: N_REPS independent instances of the regression scenario, per n_tr.
+    for n_train in N_TRAIN_VALUES:
+        set_seed(SEED)
+        print(
+            f"\n=== Section 4: regression-level comparison (d={DIM}, {POVM_TYPE} POVM, n_out={N_OUT}, n_tr={n_train}, "
+            f"{N_REPS} instances x {N_NOISE_REALIZATIONS} inner noise realizations) ==="
+        )
+        results = repeated_regression_sweep(
+            DIM, N_VALUES, n_train, N_TEST_STATES, N_OBSERVABLES, N_NOISE_REALIZATIONS, N_REPS, M_test=M_TEST,
+            povm_type=POVM_TYPE, n_out=N_OUT,
+        )
+        save_results(
+            RESULTS_DIR / results_filename(DIM, n_train, M_TEST, POVM_TYPE, N_OUT),
+            dict(
+                results=results,  # {model: {metric: array of shape (n_reps, len(N_values))}}
+                N_values=np.asarray(N_VALUES),
+                dim=DIM, povm_type=POVM_TYPE, n_out=N_OUT, n_train=n_train, M_test=M_TEST,
+                n_reps=N_REPS, n_noise_realizations=N_NOISE_REALIZATIONS,
+                n_test_states=N_TEST_STATES, n_observables=N_OBSERVABLES, seed=SEED,
+            ),
+        )
 
-    print("\n=== Section 5: main comparison plots (median + [p10,p90] instance band) ===")
-    plot_1_mse_vs_N(N_VALUES, results, DIM, N_REPS, N_TRAIN)
-    plot_4_bias_variance_scaling(N_VALUES, results, N_TRAIN, DIM, N_REPS)
-
-    print("\nDone. All figures written to:", OUTPUT_DIR)
+    print("\nDone. Run plot_noise_comparison.py with the same parameters to plot these results.")
 
 
 if __name__ == "__main__":

@@ -1,49 +1,39 @@
-"""Check the closed-form MSE fit against a single simulated experiment.
+"""Single-instance check of the four-coefficient MSE fit -- run and save.
 
-A single Random-POVM regression experiment -- one draw of Haar training
-states, POVM, a single test state and a single observable, i.e. one
-instance with n_test = n_obs = 1 -- is swept over the training shot
-budget N (true multinomial noise, `N_REAL` shot-noise realizations per
-N). The resulting MSE(N) curve is plotted against the closed-form
-prediction
+One regression instance is fixed ONCE: a Haar-random rank-one POVM with
+`N_OUT` outcomes, `N_TRAIN` Haar training states, a single Haar test
+state sigma and a single target observable O. The test-shot budget `M`
+and the label-noise levels `GAMMA` (training targets) and `GAMMA_TEST`
+(test target) are fixed too. Only the training shot budget N is swept.
 
-    MSE_fit(N) = A_d / [N + d(d+2)]^2
-               + C_d / (N n_tr) * [1 + (d^2-1) (N / (N + d(d+2)))^2]
-               + d^2 gamma^2 / n_tr
-               + C_d / M
-               + (N gamma^2 / M) * (n_out - d^2) / (n_tr - n_out - 1)
+For every N, `N_REAL` independent realizations of ALL the noise sources
+are drawn jointly -- training shot noise (Multinomial(N, p_i) / N per
+training state), test shot noise (Multinomial(M, q) / M), training label
+noise (y -> y + gamma xi) and test label noise (o -> o + gamma_test xi')
+-- and every individual squared error
 
-with
+    ( y_hat P_hat^+ q_hat  -  o_hat )^2
 
-    A_d = (d-1)(d+2)^2 / (d+1)
-    B_d = d(d-1)(d+2) / (d+1)
-    C_d = B_d / d^2 = (d-1)(d+2) / (d(d+1))
+is kept. Their mean over realizations is the empirical MSE(N) of this
+fixed instance, to be compared with the fit
 
-n_tr is the training-set size, gamma is the additive Gaussian label
-(target) noise std on the training targets (`y -> y + gamma * N(0,1)`,
-test targets exact), and M is the number of shots used to estimate the
-(single) test state's probabilities (`M=None` means exact/infinite-shot
-test statistics, for which the two M-dependent terms vanish).
+    f(N) = C0 + C1 / N + C2 / N^2 + C3 N,
 
-The measurement POVM (`POVM_TYPE`) is either:
-  "mub"    -- the complete MUB POVM (same as noise_comparison.py),
-              n_out = d(d+1) fixed by `d`.
-  "random" -- a fresh Haar-random rank-one POVM (``common.random_povm``)
-              with an arbitrary `N_OUT_RANDOM` outcomes.
-Note the fit's A_d/B_d/C_d coefficients (`theoretical_bias2_variance`)
-were derived for the complete MUB POVM specifically; n_out only enters
-the fit explicitly through the last (cross) term, so running with
-POVM_TYPE="random" is itself a check of whether that MUB-derived fit
-still tracks a generic (non-MUB) rank-one POVM.
+    C0 = gamma_test^2 + w_O Sigma_sigma w_O^T / M + gamma^2 (1 + R) ||P^+ q||^2
+    C1 = V / n_tr
+    C2 = b^2
+    C3 = gamma^2 R / M,           R = (n_out - d^2) / (n_tr - n_out - 1)
 
-`N_EXPERIMENTS` independent repetitions of the single-instance experiment
-above (each a fresh draw of the POVM, training/test states, observable,
-label noise and test-shot noise) are run. This script only runs the
-simulation and saves the raw results (every experiment's MSE(N) curve,
-plus every parameter `mse_fit` needs) to a pickle file under
-``results/``, named after the fit parameters -- see `results_filename`.
-Run ``plot_check_fit.py`` (same parameters) to load that file and make
-the plot, without re-running the simulation.
+where P is the exact (n_out, n_tr) training probability matrix, q the
+exact test probability vector, Sigma_sigma = diag(q) - q q^T, w_O^T =
+y P^+ (y the exact training targets), and V, b^2 are the single-instance
+asymptotic variance/bias coefficients of eq. (SM119)
+(`fig2_variance.V_coefficient`, `fig2_bias.b_coefficient`). With M=None
+(exact test statistics) the M-dependent pieces are dropped.
+
+The raw squared errors and every fit coefficient are saved to a pickle
+under ``results/`` (see `results_filename`). Run ``plot_check_fit.py``
+with the same parameters to make the figure.
 
 Run with ``python3 check_fit.py`` from anywhere; it locates its output
 directory next to itself.
@@ -55,10 +45,12 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # common.py, markers.py
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # common.py, fig2_*.py
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "noise_comparison"))
 import common  # noqa: E402
 import noise_comparison as nc  # noqa: E402
+from fig2_bias import b_coefficient  # noqa: E402
+from fig2_variance import V_coefficient  # noqa: E402
 
 OUTPUT_DIR = Path(__file__).resolve().parent
 RESULTS_DIR = OUTPUT_DIR / "results"
@@ -67,33 +59,26 @@ RESULTS_DIR = OUTPUT_DIR / "results"
 # Parameters (all easy to change).
 # ----------------------------------------------------------------------
 
-SEED = None
+SEED = 15  # fixes the instance (POVM, training states, sigma, O) and the noise draws
 
-DIM = 2
-POVM_TYPE = "random"  # "mub" (complete MUB POVM) or "random" (Haar-random rank-one POVM)
-N_OUT_RANDOM = 64  # number of POVM outcomes when POVM_TYPE == "random" (ignored for "mub")
-N_OUT = DIM * (DIM + 1) if POVM_TYPE == "mub" else N_OUT_RANDOM
-N_TRAIN = 640  # must be > N_OUT + 1 for the fit's cross term to be defined
-GAMMA = 0.05  # additive Gaussian label noise std on the training targets
-GAMMA_TEST = 0.05  # additive Gaussian label noise std on the test target (0 = exact test target)
-M_TEST = 1000  # test-side shot budget (None = exact test statistics)
+DIM = 4
+N_OUT = 64  # outcomes of the random POVM
+N_TRAIN = 256  # must be > N_OUT + 1 for R to be defined
+M = 1e7  # test-shot budget (None = exact test statistics)
+GAMMA = 0.01  # label noise std on the training targets
+GAMMA_TEST = 0.0  # label noise std on the test target
 
-N_VALUES = sorted(set(np.round(np.logspace(np.log10(5), np.log10(1000000), 16)).astype(int).tolist()))
-N_REAL = 100  # shot-noise realizations per N (single test state/observable -> needs many to smooth out)
-N_EXPERIMENTS = 10  # independent repetitions of the single-instance experiment
+N_VALUES = sorted(set(np.round(np.logspace(np.log10(5), 8, 16)).astype(int).tolist()))
+N_REAL = 100  # joint noise realizations per N
+CHUNK_ELEMS = 2**24  # max entries of a (chunk, n_out, n_tr) stack held in memory at once
+PINV_RCOND = 1e-12
 
 
-def results_filename(dim, povm_type, n_out, n_train, gamma, gamma_test, M):
-    """Filename encoding exactly the parameters `mse_fit` needs -- so a
-    `plot_check_fit.py` run with the same parameters locates the same
-    file. Not encoded: N_EXPERIMENTS/N_REAL/SEED (simulation settings
-    that don't enter the fit) -- re-running with those changed but the
-    same fit parameters overwrites the previous file.
-    """
+def results_filename(dim, n_out, n_train, M, gamma, gamma_test):
     M_str = "inf" if M is None else str(M)
     return (
-        f"mse_povm={povm_type}_d={dim}_nout={n_out}_ntrain={n_train}"
-        f"_gamma={gamma}_gammatest={gamma_test}_M={M_str}.pkl"
+        f"check_fit_2_d={dim}_nout={n_out}_ntrain={n_train}"
+        f"_M={M_str}_gamma={gamma}_gammatest={gamma_test}.pkl"
     )
 
 
@@ -109,133 +94,138 @@ def load_results(path):
         return pickle.load(f)
 
 
-def mse_fit_terms(N, d, n_tr, n_out, gamma, gamma_test, M):
-    """The individual terms of the closed-form MSE prediction -- see module
-    docstring -- as a dict {term_name: array}; `mse_fit` is their sum.
+def build_instance(dim, n_out, n_train):
+    """The fixed instance: exact training probabilities P (n_out, n_tr),
+    test probabilities q (n_out, 1), exact training targets y (1, n_tr)
+    and exact test target o (1, 1).
     """
-    Ad, Bd = nc.theoretical_bias2_variance(d)
-    Cd = Bd / d**2
-    N = np.asarray(N, dtype=float)
-
-    test_shot_noise = 0.0 if M is None else Cd / M
-    terms = {
-        "bias": Ad / (N + d * (d + 2)) ** 2,
-        "train_shot_variance": Cd / (N * n_tr) * (1 + (d**2 - 1) * (N / (N + d * (d + 2))) ** 2),
-        "train_label_noise": np.full_like(N, d**2 * gamma**2 / n_tr),
-        "test_noise": np.full_like(N, gamma_test**2 + test_shot_noise),  # test label noise + test shot noise
-    }
-    terms["cross"] = np.zeros_like(N) if M is None else (N * gamma**2 / M) * (n_out - d**2) / (n_tr - n_out - 1)
-    return terms
-
-
-def mse_fit(N, d, n_tr, n_out, gamma, gamma_test, M):
-    """Closed-form MSE prediction -- see module docstring."""
-    terms = mse_fit_terms(N, d, n_tr, n_out, gamma, gamma_test, M)
-    return sum(terms.values())
-
-
-def build_povm(dim, povm_type, n_out):
-    """The measurement POVM, as an (n_out, dim**2) row-major-flattened
-    matrix (same convention as `noise_comparison.mub_povm_matrix`).
-    """
-    if povm_type == "mub":
-        return nc.mub_povm_matrix(dim)
-    elif povm_type == "random":
-        return common.random_povm(dim, n_out)
-    raise ValueError(f"POVM_TYPE must be 'mub' or 'random', got {povm_type!r}")
-
-
-def build_regression_scenario(M_mu, dim, n_train, n_test, n_obs):
-    """Same as `noise_comparison.build_regression_scenario`, but with the
-    POVM matrix `M_mu` passed in rather than always the complete MUB POVM,
-    so a random rank-one POVM (`build_povm`) can be used as well.
-    """
+    M_mu = common.random_povm(dim, n_out)
     M_rho = nc.flattened_states(dim, n_train)
-    M_sigma = nc.flattened_states(dim, n_test)
-    M_obs = nc.flattened_states(dim, n_obs)
+    M_sigma = nc.flattened_states(dim, 1)
+    M_obs = nc.flattened_states(dim, 1)
 
-    P_train = nc.povm_probabilities(M_mu, M_rho)
-    P_test = nc.povm_probabilities(M_mu, M_sigma)
+    P = nc.povm_probabilities(M_mu, M_rho)
+    q = nc.povm_probabilities(M_mu, M_sigma)
+    P = P / P.sum(axis=0, keepdims=True)
+    q = q / q.sum(axis=0, keepdims=True)
 
-    y_train = (M_obs.conj() @ M_rho.T).real
-    y_test = (M_obs.conj() @ M_sigma.T).real
+    y = (M_obs.conj() @ M_rho.T).real
+    o = (M_obs.conj() @ M_sigma.T).real
+    return P, q, y, o
 
-    return dict(n_out=M_mu.shape[0], P_train=P_train, P_test=P_test, y_train=y_train, y_test=y_test)
+
+def fit_coefficients(P, q, y, dim, gamma, gamma_test, M):
+    """C0..C3 of the fit, plus the instance quantities they are built from."""
+    n_out, n_tr = P.shape
+    P_pinv = np.linalg.pinv(P)
+    w = y @ P_pinv  # (1, n_out), w_O^T = y P^+
+    Sigma_sigma = common.sigma_from_p(q[:, 0])
+
+    R = (n_out - dim**2) / (n_tr - n_out - 1)
+    wSw = (w @ Sigma_sigma @ w.T).item()
+    Pq2 = float(np.sum((P_pinv @ q) ** 2))
+    V = float(V_coefficient(y, P, q)[0, 0])
+    b2 = float(b_coefficient(y, P, q)[0, 0] ** 2)
+
+    inv_M = 0.0 if M is None else 1.0 / M
+    return dict(
+        C0=gamma_test**2 + wSw * inv_M + gamma**2 * (1 + R) * Pq2,
+        C1=V / n_tr,
+        C2=b2,
+        C3=gamma**2 * R * inv_M,
+        R=R, wSw=wSw, Pq2=Pq2, V=V, b2=b2,
+    )
 
 
-def run_single_experiment(seed):
-    """One Haar-random regression instance -- POVM, single training states,
-    single test state, single observable, one draw of the training-target
-    label noise (`gamma`), one draw of the test-target label noise
-    (`gamma_test`), and one draw of the test-side M-shot noise -- all fixed
-    once here, up front. The N-sweep below then changes exactly one thing,
-    the training-side shot-noise sampling: `N_REAL` multinomial(N, P_train)
-    realizations for each N in `N_VALUES`.
+def fit_terms(N, coeffs):
+    """The four terms of f(N), as a dict {name: array}; f(N) is their sum."""
+    N = np.asarray(N, dtype=float)
+    return {
+        "C0": np.full_like(N, coeffs["C0"]),
+        "C1/N": coeffs["C1"] / N,
+        "C2/N^2": coeffs["C2"] / (N+8)**2,
+        "C3 N": coeffs["C3"] * N,
+    }
+
+
+def mse_fit(N, coeffs):
+    return sum(fit_terms(N, coeffs).values())
+
+
+def averaged_fit(N, d, n_tr, n_out, gamma, gamma_test, M):
+    """Closed-form MSE averaged over sigma and O (depends only on d, n_tr,
+    n_out, gamma, gamma_test, M -- not on the drawn instance):
+
+        (d-1)(d+2) / (d(d+1) n_tr N) + (d-1)(d+2)^2 / ((d+1)(d(d+2) + N)^2)
+        + (d-1)(d+2) / (d(d+1) M) + gamma_test^2 + d^2 gamma^2 / n_tr
+        + (n_out - d^2) N gamma^2 / ((n_tr - n_out - 1) M)
     """
-    nc.set_seed(seed)
-    M_mu = build_povm(DIM, POVM_TYPE, N_OUT)
-    scenario = build_regression_scenario(M_mu, DIM, N_TRAIN, 1, 1)
-    P_train, P_test = scenario["P_train"], scenario["P_test"]
-    y_train = scenario["y_train"] + GAMMA * np.random.randn(*scenario["y_train"].shape)
-    y_test = scenario["y_test"] + GAMMA_TEST * np.random.randn(*scenario["y_test"].shape)
-
-    # Fixed once, not redrawn as N sweeps: the single M-shot noisy read of
-    # the (single) test state's probabilities.
-    P_test_used = P_test if M_TEST is None else nc.noisy_test_probs(P_test, M_TEST, "mult", tol=nc.EIG_TOL)
-
-    mse_empirical = []
-    for N in N_VALUES:
-        mult_stack = nc.multinomial_phat_batch(P_train, N, N_REAL)  # (N_REAL, n_out, n_train)
-        o_hat_stack = nc.predict_batch(y_train, mult_stack, P_test_used, rcond=nc.PINV_RCOND)
-        _, _, mse = nc.bias_variance_mse(o_hat_stack, y_test)
-        mse_empirical.append(mse)
-        print(f"  N={N:>6d}  MSE_empirical={mse:.4e}")
-
-    return np.array(mse_empirical)
+    N = np.asarray(N, dtype=float)
+    Cd = (d - 1) * (d + 2) / (d * (d + 1))
+    inv_M = 0.0 if M is None else 1.0 / M
+    return (
+        Cd / (n_tr * N)
+        + (d - 1) * (d + 2) ** 2 / ((d + 1) * (d * (d + 2) + N) ** 2)
+        + Cd * inv_M
+        + gamma_test**2
+        + d**2 * gamma**2 / n_tr
+        + (n_out - d**2) * N * gamma**2 * inv_M / (n_tr - n_out - 1)
+    )
 
 
-def run_experiments(n_experiments):
-    """`n_experiments` independent repetitions of `run_single_experiment`,
-    each with its own seed (so they're independent even when `SEED` is
-    fixed). Returns an (n_experiments, len(N_VALUES)) array.
+def squared_errors(P, q, y, o, N, n_real, gamma, gamma_test, M):
+    """`n_real` squared errors at training shot budget N, each with its own
+    independent draw of training shots, test shots and label noise.
     """
-    results = []
-    for i in range(n_experiments):
-        seed = None if SEED is None else SEED + i
-        print(f"\n--- experiment {i + 1}/{n_experiments} (seed={seed}) ---")
-        results.append(run_single_experiment(seed))
-    return np.array(results)
+    n_out, n_tr = P.shape
+    chunk = max(1, CHUNK_ELEMS // (n_out * n_tr))
+    out = []
+    for start in range(0, n_real, chunk):
+        r = min(chunk, n_real - start)
+        P_hat = nc.multinomial_phat_batch(P, N, r)  # (r, n_out, n_tr)
+        q_hat = q[None, :, 0] if M is None else nc.multinomial_phat_batch(q, M, r)[:, :, 0]  # (r, n_out)
+        y_noisy = y[0][None, :] + gamma * common.rng.standard_normal((r, n_tr))
+        o_noisy = o[0, 0] + gamma_test * common.rng.standard_normal(r)
+
+        a = np.einsum("rik,rk->ri", np.linalg.pinv(P_hat, rcond=PINV_RCOND), np.broadcast_to(q_hat, (r, n_out)))
+        o_hat = np.einsum("ri,ri->r", y_noisy, a)
+        out.append((o_hat - o_noisy) ** 2)
+    return np.concatenate(out)
 
 
 def main():
     print("=" * 72)
-    print(f"MSE fit check -- {N_EXPERIMENTS} independent POVM experiments (n_test=1, n_obs=1)")
+    print("Single-instance MSE vs N -- check of f(N) = C0 + C1/N + C2/N^2 + C3 N")
     print("=" * 72)
     print(
-        f"povm={POVM_TYPE}  d={DIM}  n_out={N_OUT}  n_train={N_TRAIN}  "
-        f"gamma={GAMMA}  gamma_test={GAMMA_TEST}  M={M_TEST}  N_REAL={N_REAL}"
+        f"d={DIM}  n_out={N_OUT}  n_train={N_TRAIN}  M={M}  gamma={GAMMA}  "
+        f"gamma_test={GAMMA_TEST}  N_REAL={N_REAL}  seed={SEED}"
     )
+    if N_TRAIN <= N_OUT + 1:
+        raise ValueError("N_TRAIN must be > N_OUT + 1 for R to be defined")
 
-    mse_empirical = run_experiments(N_EXPERIMENTS)
+    nc.set_seed(SEED)
+    P, q, y, o = build_instance(DIM, N_OUT, N_TRAIN)
+    coeffs = fit_coefficients(P, q, y, DIM, GAMMA, GAMMA_TEST, M)
+    print("fit coefficients: " + "  ".join(f"{k}={v:.4e}" for k, v in coeffs.items()))
+
+    sq_errors = np.empty((N_REAL, len(N_VALUES)))
+    for j, N in enumerate(N_VALUES):
+        sq_errors[:, j] = squared_errors(P, q, y, o, N, N_REAL, GAMMA, GAMMA_TEST, M)
+        mse = sq_errors[:, j].mean()
+        sem = sq_errors[:, j].std(ddof=1) / np.sqrt(N_REAL)
+        fit = mse_fit(N, coeffs)
+        print(f"  N={N:>7d}  MSE={mse:.4e} +- {sem:.1e}  fit={fit:.4e}  ratio={mse / fit:.3f}")
 
     results = dict(
         N_values=np.asarray(N_VALUES),
-        mse_empirical=mse_empirical,
-        dim=DIM,
-        povm_type=POVM_TYPE,
-        n_out=N_OUT,
-        n_train=N_TRAIN,
-        gamma=GAMMA,
-        gamma_test=GAMMA_TEST,
-        M_test=M_TEST,
-        n_experiments=N_EXPERIMENTS,
-        n_real=N_REAL,
-        seed=SEED,
+        sq_errors=sq_errors,
+        coeffs=coeffs,
+        dim=DIM, n_out=N_OUT, n_train=N_TRAIN, M=M, gamma=GAMMA, gamma_test=GAMMA_TEST,
+        n_real=N_REAL, seed=SEED,
     )
-    filename = results_filename(DIM, POVM_TYPE, N_OUT, N_TRAIN, GAMMA, GAMMA_TEST, M_TEST)
     print("\n=== saving results ===")
-    save_results(RESULTS_DIR / filename, results)
-
+    save_results(RESULTS_DIR / results_filename(DIM, N_OUT, N_TRAIN, M, GAMMA, GAMMA_TEST), results)
     print("\nDone. Run plot_check_fit.py with the same parameters to plot these results.")
 
 
