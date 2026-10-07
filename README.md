@@ -1,9 +1,9 @@
-# Mind the rank! Finite-resource effects in quantum linear regression
+# Who can sample forever? Shot noise effects in quantum linear regression
 
 Code and data for the numerical results of
 
 > G. Lo Monaco, S. Lorenzo, A. Ferraro, M. Paternostro, G. M. Palma, and L. Innocenti,
-> *Mind the rank! Finite-resource effects in quantum linear regression*.
+> *Who can sample forever? Shot noise effects in quantum linear regression*.
 
 The simulations study pseudoinverse quantum linear regression (quantum extreme learning machines) when the feature probabilities are estimated from a finite number of measurement shots.
 
@@ -27,7 +27,7 @@ Each folder in `python/` holds one experiment. It contains a simulation script t
 
 ## Usage
 
-Requirements: Python 3 with NumPy and Matplotlib (`pip install -r requirements.txt`; tested with Python 3.12, NumPy 2.4, Matplotlib 3.9), plus a LaTeX installation, since the figures use LaTeX text rendering.
+Requirements: Python 3 with NumPy and Matplotlib (tested with Python 3.12, NumPy 2.4, Matplotlib 3.9), plus a LaTeX installation, since the figures use LaTeX text rendering.
 
 To regenerate a figure from the stored data:
 
